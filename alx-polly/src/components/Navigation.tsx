@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/contexts/AuthContext";
 import { LogOut, User, Settings } from "lucide-react";
@@ -17,12 +17,14 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 
 export default function Navigation() {
   const pathname = usePathname();
+  const router = useRouter();
   const { user, profile, signOut, loading } = useAuth();
 
   const isActive = (path: string) => pathname === path;
 
   const handleSignOut = async () => {
     await signOut();
+    router.push("/login");
   };
 
   const getInitials = (name: string | null | undefined) => {
