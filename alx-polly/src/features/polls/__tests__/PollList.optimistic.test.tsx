@@ -7,11 +7,6 @@ jest.mock('@/lib/supabase/client', () => ({
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import PollList from "../PollList";
 
-// Ensure Jest globals are available
-declare const beforeAll: any;
-declare const afterAll: any;
-declare const test: any;
-declare const expect: any;
 
 // Mock fetch for voting API
 beforeAll(() => {
@@ -56,13 +51,21 @@ afterAll(() => {
 
 test("optimistic voting updates UI and syncs with API results", async () => {
   render(<PollList />);
-  // Wait for polls to load
-  expect(await screen.findByText(/Poll Results Dashboard/i)).toBeInTheDocument();
+  // Wait for loading spinner to disappear with a longer timeout
+  await waitFor(() => {
+    expect(screen.queryByText(/Loading amazing polls.../i)).not.toBeInTheDocument();
+  }, { timeout: 3000 }); // Increased timeout to 3 seconds
+
+  // Now check for dashboard text
+  expect(screen.getByText(/Poll Results Dashboard/i)).toBeInTheDocument();
+
   // Find the first poll's vote button
   const voteButton = await screen.findByRole("button", { name: /JavaScript \(45 votes\)/i });
   fireEvent.click(voteButton);
+
   // Optimistic update: button should be disabled
   expect(voteButton).toBeDisabled();
+
   // Wait for UI to sync with API response
   await waitFor(() => {
     expect(screen.getByRole("button", { name: /JavaScript \(46 votes\)/i })).toBeInTheDocument();

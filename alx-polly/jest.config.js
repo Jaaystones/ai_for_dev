@@ -19,9 +19,9 @@ module.exports = {
     "^@hooks/(.*)$": "<rootDir>/src/hooks/$1",
     "^@lib/(.*)$": "<rootDir>/src/lib/$1"
   },
-  // Babel Setup support for JSX
+  // Use ts-jest for TypeScript files only
   transform: {
-    "^.+\\.(js|jsx|ts|tsx)$": "babel-jest"
+    "^.+\\.(ts|tsx)$": "ts-jest"
   },
 
   // Handled ESM Dependencies (Supabase/jose)
