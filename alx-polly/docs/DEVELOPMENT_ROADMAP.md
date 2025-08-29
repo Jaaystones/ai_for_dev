@@ -6,14 +6,13 @@ Building a scalable Next.js polling application with Supabase backend, deployed 
 
 ## 🚀 **CURRENT STATUS: ~90% COMPLETE**
 
-
 ### ✅ **MAJOR IMPLEMENTATIONS COMPLETED:**
 
 - **🎨 Full UI/UX**: Beautiful Shadcn UI with responsive design and animations
 - **🔐 Complete Authentication**: Supabase auth with login/register pages and middleware
 - **🗄️ Database**: Full PostgreSQL schema with RLS policies deployed
 - **🔌 API Layer**: Complete REST endpoints for polls, voting, and user management
--- **⚡ Real-time**: Live vote updates with Supabase subscriptions and optimistic UI voting
+  -- **⚡ Real-time**: Live vote updates with Supabase subscriptions and optimistic UI voting
 - **📱 QR Codes**: Automatic QR code generation for poll sharing
 - **🛡️ Security**: Vote duplicate prevention, IP tracking, and input validation
 - **🧪 Testing**: Jest and Testing Library setup with passing unit tests for optimistic voting

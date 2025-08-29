@@ -1,11 +1,13 @@
 "use client";
 
 import { useState } from 'react';
+import { QRScanner }from './QRScanner';
 import { QRCodeSVG } from 'qrcode.react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Share2, Download, Copy, ExternalLink } from 'lucide-react';
+import { Share2, Download, Copy, ExternalLink, Camera } from 'lucide-react';
+
 
 interface QRCodeGeneratorProps {
   pollId: string;
@@ -13,9 +15,10 @@ interface QRCodeGeneratorProps {
   className?: string;
 }
 
-export default function QRCodeGenerator({ pollId, pollTitle, className }: QRCodeGeneratorProps) {
+export function QRCodeGenerator({ pollId, pollTitle, className }: QRCodeGeneratorProps) {
   const [showQR, setShowQR] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [showScanner, setShowScanner] = useState(false);
 
   const pollUrl = `${process.env.NEXT_PUBLIC_APP_URL}/polls/${pollId}`;
   const shareText = `Vote in this poll: ${pollTitle}`;
@@ -80,9 +83,24 @@ export default function QRCodeGenerator({ pollId, pollTitle, className }: QRCode
     }
   };
 
+  if (showScanner) {
+    return (
+      <QRScanner
+        onScan={data => {
+          setShowScanner(false);
+          if (data) {
+            window.location.href = data;
+          }
+        }}
+        onClose={() => setShowScanner(false)}
+        className={className}
+      />
+    );
+  }
+
   if (!showQR) {
     return (
-      <div className={className}>
+      <div className={className + ' flex gap-2'}>
         <Button
           onClick={() => setShowQR(true)}
           variant="outline"
@@ -90,6 +108,14 @@ export default function QRCodeGenerator({ pollId, pollTitle, className }: QRCode
         >
           <Share2 className="w-4 h-4 mr-2" />
           Share Poll
+        </Button>
+        <Button
+          onClick={() => setShowScanner(true)}
+          variant="outline"
+          className="w-full"
+        >
+          <Camera className="w-4 h-4 mr-2" />
+          Scan QR
         </Button>
       </div>
     );
