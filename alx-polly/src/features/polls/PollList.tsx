@@ -1,10 +1,12 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { useRealtimeConnectionStatus } from "@/hooks/useRealtimeConnectionStatus";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
 import { Poll } from "@/types/poll";
+import PollVote from "./PollVote";
 
 // Mock data - replace with actual API call
 const mockPolls: Poll[] = [
@@ -55,6 +57,7 @@ const mockPolls: Poll[] = [
 export default function PollList() {
   const [polls, setPolls] = useState<Poll[]>([]);
   const [loading, setLoading] = useState(true);
+  const isConnected = useRealtimeConnectionStatus();
 
   useEffect(() => {
     // Simulate API call
@@ -67,12 +70,9 @@ export default function PollList() {
   const formatTimeRemaining = (expiresAt: Date) => {
     const now = new Date();
     const timeDiff = expiresAt.getTime() - now.getTime();
-    
     if (timeDiff <= 0) return "Expired";
-    
     const hours = Math.floor(timeDiff / (1000 * 60 * 60));
     const minutes = Math.floor((timeDiff % (1000 * 60 * 60)) / (1000 * 60));
-    
     if (hours > 0) {
       return `${hours}h ${minutes}m remaining`;
     }
@@ -80,7 +80,7 @@ export default function PollList() {
   };
 
   const getWinningOption = (poll: Poll) => {
-    return poll.options.reduce((prev, current) => 
+    return poll.options.reduce((prev, current) =>
       prev.votes > current.votes ? prev : current
     );
   };
@@ -104,9 +104,41 @@ export default function PollList() {
     );
   }
 
+  // Real vote API handler
+  const handleVote = async (pollId: string, optionId: string) => {
+    try {
+      const res = await fetch(`/api/polls/${pollId}/vote`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ optionId }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || "Vote failed");
+      }
+      // Update local poll state with latest results
+      if (data.poll) {
+        setPolls(prevPolls =>
+          prevPolls.map(p =>
+            p.id === pollId ? { ...p, ...data.poll, options: data.poll.poll_options } : p
+          )
+        );
+      }
+    } catch (err) {
+      throw err;
+    }
+  };
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-100 dark:from-slate-900 dark:via-slate-800 dark:to-slate-900 py-12">
       <div className="container mx-auto px-4">
+        {!isConnected && (
+          <div className="mb-4 p-3 rounded-lg bg-yellow-100 text-yellow-800 dark:bg-yellow-900/40 dark:text-yellow-300 text-center font-semibold shadow">
+            Reconnecting to live updates...
+          </div>
+        )}
         <div className="max-w-5xl mx-auto space-y-8 animate-fade-in">
           {/* Header */}
           <div className="text-center space-y-4">
@@ -163,7 +195,6 @@ export default function PollList() {
                         ? "from-green-500 to-emerald-500" 
                         : "from-blue-500 to-purple-500"
                     }`}></div>
-                    
                     <CardHeader className="pb-4">
                       <div className="flex justify-between items-start gap-4">
                         <CardTitle className="text-xl leading-tight flex-1">
@@ -188,7 +219,6 @@ export default function PollList() {
                           </Badge>
                         </div>
                       </div>
-                      
                       <div className="flex items-center gap-2 text-sm text-muted-foreground">
                         <span className="text-base">⏰</span>
                         {poll.isExpired ? (
@@ -202,15 +232,18 @@ export default function PollList() {
                         )}
                       </div>
                     </CardHeader>
-                    
                     <CardContent className="space-y-6">
+                      {/* Optimistic UI Voting Component */}
+                      {!poll.isExpired && (
+                        <PollVote poll={poll} onVote={optionId => handleVote(poll.id, optionId)} />
+                      )}
+                      {/* ...existing code for results display... */}
                       <div className="space-y-4">
                         {poll.options.map((option, optionIndex) => {
                           const percentage = poll.totalVotes > 0 
                             ? Math.round((option.votes / poll.totalVotes) * 100) 
                             : 0;
                           const isWinner = poll.isExpired && option.id === winningOption.id;
-                          
                           return (
                             <div 
                               key={option.id} 
@@ -258,7 +291,6 @@ export default function PollList() {
                           );
                         })}
                       </div>
-                      
                       {poll.isExpired && (
                         <div className="pt-4 border-t border-green-200 dark:border-green-800 bg-green-50/50 dark:bg-green-900/20 -mx-6 px-6 pb-2 mt-6">
                           <div className="flex items-center justify-between text-sm">
