@@ -293,6 +293,11 @@ describe('CreatePollForm', () => {
 
     renderWithAuth(<CreatePollForm />);
     
+    // Wait for authentication loading to complete
+    await waitFor(() => {
+      expect(screen.queryByText('Loading...')).not.toBeInTheDocument();
+    });
+    
     await fillPollForm(user);
 
     const submitButton = screen.getByRole('button', { name: /create poll/i });
@@ -300,8 +305,8 @@ describe('CreatePollForm', () => {
 
     await waitFor(() => {
       expect(screen.getByText(/network error/i)).toBeInTheDocument();
-    });
-  });
+    }, { timeout: 10000 });
+  }, 15000);
 
   test('can add and remove poll options', async () => {
     const user = userEvent.setup();

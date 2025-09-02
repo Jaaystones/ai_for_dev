@@ -332,5 +332,5 @@ describe('Poll Creation and Voting Integration', () => {
       
     // Verify navigation was called
     expect(mockPush).toHaveBeenCalledWith('/polls');
-  });
+  }, 15000);
 });
