@@ -1,12 +1,4 @@
 module.exports = {
-  //For parsing jsx properly
-  globals: {
-    'ts-jest': {
-      tsconfig: {
-        jsx: 'react-jsx'
-      }
-    }
-  },
   //Preset for proper Typescript support
   preset: 'ts-jest',
   testEnvironment: "jsdom",
@@ -19,9 +11,13 @@ module.exports = {
     "^@hooks/(.*)$": "<rootDir>/src/hooks/$1",
     "^@lib/(.*)$": "<rootDir>/src/lib/$1"
   },
-  // Use ts-jest for TypeScript files only
+  // Modern ts-jest configuration
   transform: {
-    "^.+\\.(ts|tsx)$": "ts-jest"
+    "^.+\\.(ts|tsx)$": ["ts-jest", {
+      tsconfig: {
+        jsx: 'react-jsx'
+      }
+    }]
   },
 
   // Handled ESM Dependencies (Supabase/jose)

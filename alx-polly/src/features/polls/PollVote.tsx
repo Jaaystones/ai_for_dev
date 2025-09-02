@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
-import { Poll, PollOption } from "@/types/poll";
+import { Poll, PollOption } from "@/types/database";
 
 interface PollVoteProps {
   poll: Poll;
@@ -9,7 +9,7 @@ interface PollVoteProps {
 
 export default function PollVote({ poll, onVote }: PollVoteProps) {
   const [selectedOption, setSelectedOption] = useState<string | null>(null);
-  const [optimisticVotes, setOptimisticVotes] = useState<PollOption[]>(poll.options);
+  const [optimisticVotes, setOptimisticVotes] = useState<PollOption[]>(poll.poll_options || []);
   const [isVoting, setIsVoting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -20,7 +20,7 @@ export default function PollVote({ poll, onVote }: PollVoteProps) {
     // Optimistically update vote count
     setOptimisticVotes(options =>
       options.map(opt =>
-        opt.id === optionId ? { ...opt, votes: opt.votes + 1 } : opt
+        opt.id === optionId ? { ...opt, vote_count: opt.vote_count + 1 } : opt
       )
     );
     try {
@@ -28,7 +28,7 @@ export default function PollVote({ poll, onVote }: PollVoteProps) {
     } catch (err) {
       setError("Vote failed. Please try again.");
       // Revert optimistic update
-      setOptimisticVotes(poll.options);
+      setOptimisticVotes(poll.poll_options || []);
       setSelectedOption(null);
     } finally {
       setIsVoting(false);
@@ -46,7 +46,7 @@ export default function PollVote({ poll, onVote }: PollVoteProps) {
             selectedOption === option.id ? "bg-blue-600 text-white" : ""
           }
         >
-          {option.text} ({option.votes} votes)
+          {option.text} ({option.vote_count} votes)
         </Button>
       ))}
       {error && <div className="text-red-500 mt-2">{error}</div>}

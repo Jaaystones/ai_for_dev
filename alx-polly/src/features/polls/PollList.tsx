@@ -1,75 +1,23 @@
 "use client";
 
-import { useState, useEffect } from "react";
 import { useRealtimeConnectionStatus } from "@/hooks/useRealtimeConnectionStatus";
+import { usePollsRealtime } from "@/hooks/usePollRealtime";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
-import { Poll } from "@/types/poll";
+import { Poll } from "@/types/database"; // Use database Poll type
 import PollVote from "./PollVote";
 
-// Mock data - replace with actual API call
-const mockPolls: Poll[] = [
-  {
-    id: "1",
-    question: "What's your favorite programming language for web development?",
-    options: [
-      { id: "1", text: "JavaScript", votes: 45 },
-      { id: "2", text: "Python", votes: 38 },
-      { id: "3", text: "TypeScript", votes: 32 },
-      { id: "4", text: "Go", votes: 15 }
-    ],
-    createdAt: new Date(Date.now() - 12 * 60 * 60 * 1000), // 12 hours ago
-    expiresAt: new Date(Date.now() + 12 * 60 * 60 * 1000), // 12 hours from now
-    isExpired: false,
-    totalVotes: 130
-  },
-  {
-    id: "2",
-    question: "Which backend framework do you prefer for enterprise applications?",
-    options: [
-      { id: "1", text: "Express.js", votes: 25 },
-      { id: "2", text: "Django", votes: 30 },
-      { id: "3", text: "Spring Boot", votes: 20 },
-      { id: "4", text: "FastAPI", votes: 15 }
-    ],
-    createdAt: new Date(Date.now() - 25 * 60 * 60 * 1000), // 25 hours ago
-    expiresAt: new Date(Date.now() - 1 * 60 * 60 * 1000), // 1 hour ago (expired)
-    isExpired: true,
-    totalVotes: 90
-  },
-  {
-    id: "3",
-    question: "Best database for high-performance web applications?",
-    options: [
-      { id: "1", text: "PostgreSQL", votes: 42 },
-      { id: "2", text: "MongoDB", votes: 35 },
-      { id: "3", text: "MySQL", votes: 28 },
-      { id: "4", text: "Redis", votes: 10 }
-    ],
-    createdAt: new Date(Date.now() - 30 * 60 * 60 * 1000), // 30 hours ago
-    expiresAt: new Date(Date.now() - 6 * 60 * 60 * 1000), // 6 hours ago (expired)
-    isExpired: true,
-    totalVotes: 115
-  }
-];
-
 export default function PollList() {
-  const [polls, setPolls] = useState<Poll[]>([]);
-  const [loading, setLoading] = useState(true);
   const isConnected = useRealtimeConnectionStatus();
+  
+  // Use real API instead of mock data
+  const { polls, loading, error, refetch } = usePollsRealtime({ status: 'active' });
 
-  useEffect(() => {
-    // Simulate API call
-    setTimeout(() => {
-      setPolls(mockPolls);
-      setLoading(false);
-    }, 1000);
-  }, []);
-
-  const formatTimeRemaining = (expiresAt: Date) => {
+  const formatTimeRemaining = (expiresAt: string | Date) => {
     const now = new Date();
-    const timeDiff = expiresAt.getTime() - now.getTime();
+    const expireDate = typeof expiresAt === 'string' ? new Date(expiresAt) : expiresAt;
+    const timeDiff = expireDate.getTime() - now.getTime();
     if (timeDiff <= 0) return "Expired";
     const hours = Math.floor(timeDiff / (1000 * 60 * 60));
     const minutes = Math.floor((timeDiff % (1000 * 60 * 60)) / (1000 * 60));
@@ -80,9 +28,20 @@ export default function PollList() {
   };
 
   const getWinningOption = (poll: Poll) => {
-    return poll.options.reduce((prev, current) =>
-      prev.votes > current.votes ? prev : current
+    if (!poll.poll_options || poll.poll_options.length === 0) {
+      return null;
+    }
+    return poll.poll_options.reduce((prev, current) =>
+      (prev.vote_count || 0) > (current.vote_count || 0) ? prev : current
     );
+  };
+
+  const getTotalVotes = (poll: Poll) => {
+    return poll.poll_options?.reduce((sum, option) => sum + (option.vote_count || 0), 0) || 0;
+  };
+
+  const isExpired = (poll: Poll) => {
+    return !poll.is_active || new Date(poll.expires_at) < new Date();
   };
 
   if (loading) {
@@ -104,7 +63,31 @@ export default function PollList() {
     );
   }
 
-  // Real vote API handler
+  // Handle API errors
+  if (error) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-100 dark:from-slate-900 dark:via-slate-800 dark:to-slate-900 py-12">
+        <div className="container mx-auto px-4">
+          <div className="max-w-4xl mx-auto">
+            <Card className="shadow-lg bg-white/80 backdrop-blur-lg dark:bg-slate-800/80 border-red-200">
+              <CardContent className="p-8 text-center">
+                <div className="text-red-600 mb-4">⚠️ Error loading polls</div>
+                <p className="text-muted-foreground mb-4">{error}</p>
+                <button 
+                  onClick={() => refetch()}
+                  className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700"
+                >
+                  Try Again
+                </button>
+              </CardContent>
+            </Card>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Real vote API handler - updated for database Poll type
   const handleVote = async (pollId: string, optionId: string) => {
     try {
       const res = await fetch(`/api/polls/${pollId}/vote`, {
@@ -118,15 +101,10 @@ export default function PollList() {
       if (!res.ok || !data.success) {
         throw new Error(data.error || "Vote failed");
       }
-      // Update local poll state with latest results
-      if (data.poll) {
-        setPolls(prevPolls =>
-          prevPolls.map(p =>
-            p.id === pollId ? { ...p, ...data.poll, options: data.poll.poll_options } : p
-          )
-        );
-      }
+      // Refetch polls to get updated data
+      refetch();
     } catch (err) {
+      console.error('Vote failed:', err);
       throw err;
     }
   };
@@ -157,10 +135,10 @@ export default function PollList() {
                 📈 {polls.length} Total Polls
               </Badge>
               <Badge variant="outline" className="text-base px-4 py-2 bg-white/70 dark:bg-slate-800/70">
-                🔥 {polls.filter(p => !p.isExpired).length} Active
+                🔥 {polls.filter(p => !isExpired(p)).length} Active
               </Badge>
               <Badge variant="outline" className="text-base px-4 py-2 bg-white/70 dark:bg-slate-800/70">
-                ✅ {polls.filter(p => p.isExpired).length} Completed
+                ✅ {polls.filter(p => isExpired(p)).length} Completed
               </Badge>
             </div>
           </div>
@@ -179,71 +157,73 @@ export default function PollList() {
             <div className="grid gap-6">
               {polls.map((poll, index) => {
                 const winningOption = getWinningOption(poll);
+                const totalVotes = getTotalVotes(poll);
+                const pollExpired = isExpired(poll);
                 
                 return (
                   <Card 
                     key={poll.id} 
                     className={`overflow-hidden shadow-xl transition-all duration-300 hover:shadow-2xl border-0 bg-white/90 backdrop-blur-lg dark:bg-slate-800/90 animate-slide-up ${
-                      poll.isExpired 
+                      pollExpired 
                         ? "ring-2 ring-green-200 dark:ring-green-800" 
                         : "ring-2 ring-blue-200 dark:ring-blue-800"
                     }`}
                     style={{ animationDelay: `${index * 0.1}s` }}
                   >
                     <div className={`h-1 bg-gradient-to-r ${
-                      poll.isExpired 
+                      pollExpired 
                         ? "from-green-500 to-emerald-500" 
                         : "from-blue-500 to-purple-500"
                     }`}></div>
                     <CardHeader className="pb-4">
                       <div className="flex justify-between items-start gap-4">
                         <CardTitle className="text-xl leading-tight flex-1">
-                          {poll.question}
+                          {poll.title}
                         </CardTitle>
                         <div className="flex flex-col gap-2 items-end">
                           <Badge 
-                            variant={poll.isExpired ? "secondary" : "default"}
+                            variant={pollExpired ? "secondary" : "default"}
                             className={`text-sm font-semibold px-3 py-1 ${
-                              poll.isExpired 
+                              pollExpired 
                                 ? "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400" 
                                 : "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400"
                             }`}
                           >
-                            {poll.isExpired ? "🏁 Completed" : "🔴 Live"}
+                            {pollExpired ? "🏁 Completed" : "🔴 Live"}
                           </Badge>
                           <Badge 
                             variant="outline" 
                             className="text-sm px-3 py-1 bg-white/70 dark:bg-slate-700/70"
                           >
-                            👥 {poll.totalVotes} votes
+                            👥 {totalVotes} votes
                           </Badge>
                         </div>
                       </div>
                       <div className="flex items-center gap-2 text-sm text-muted-foreground">
                         <span className="text-base">⏰</span>
-                        {poll.isExpired ? (
+                        {pollExpired ? (
                           <span className="font-medium text-green-600 dark:text-green-400">
                             Poll completed
                           </span>
                         ) : (
                           <span className="font-medium text-blue-600 dark:text-blue-400 animate-pulse">
-                            {formatTimeRemaining(poll.expiresAt)}
+                            {formatTimeRemaining(poll.expires_at)}
                           </span>
                         )}
                       </div>
                     </CardHeader>
                     <CardContent className="space-y-6">
                       {/* Optimistic UI Voting Component */}
-                      {!poll.isExpired && (
+                      {!pollExpired && (
                         <PollVote poll={poll} onVote={optionId => handleVote(poll.id, optionId)} />
                       )}
-                      {/* ...existing code for results display... */}
+                      {/* Results display */}
                       <div className="space-y-4">
-                        {poll.options.map((option, optionIndex) => {
-                          const percentage = poll.totalVotes > 0 
-                            ? Math.round((option.votes / poll.totalVotes) * 100) 
+                        {poll.poll_options?.map((option, optionIndex) => {
+                          const percentage = totalVotes > 0 
+                            ? Math.round((option.vote_count / totalVotes) * 100) 
                             : 0;
-                          const isWinner = poll.isExpired && option.id === winningOption.id;
+                          const isWinner = pollExpired && winningOption && option.id === winningOption.id;
                           return (
                             <div 
                               key={option.id} 
@@ -262,7 +242,7 @@ export default function PollList() {
                                 </div>
                                 <div className="flex items-center gap-3 text-sm font-medium">
                                   <span className="text-slate-600 dark:text-slate-400">
-                                    {option.votes} votes
+                                    {option.vote_count} votes
                                   </span>
                                   <span className={`font-bold ${
                                     isWinner 
@@ -291,17 +271,19 @@ export default function PollList() {
                           );
                         })}
                       </div>
-                      {poll.isExpired && (
+                      {pollExpired && (
                         <div className="pt-4 border-t border-green-200 dark:border-green-800 bg-green-50/50 dark:bg-green-900/20 -mx-6 px-6 pb-2 mt-6">
                           <div className="flex items-center justify-between text-sm">
                             <div className="flex items-center gap-2 text-green-700 dark:text-green-400 font-semibold">
                               <span className="text-base">🎉</span>
                               <span>Final Results:</span>
                             </div>
-                            <div className="text-green-600 dark:text-green-400 font-bold">
-                              {winningOption.text} wins with {winningOption.votes} votes 
-                              ({Math.round((winningOption.votes / poll.totalVotes) * 100)}%)
-                            </div>
+                            {winningOption && (
+                              <div className="text-green-600 dark:text-green-400 font-bold">
+                                {winningOption.text} wins with {winningOption.vote_count} votes 
+                                ({Math.round((winningOption.vote_count / totalVotes) * 100)}%)
+                              </div>
+                            )}
                           </div>
                         </div>
                       )}
