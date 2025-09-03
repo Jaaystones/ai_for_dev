@@ -1,3 +1,5 @@
+import { PollType } from './pollTypes';
+
 export interface Poll {
   id: string;
   question: string;
@@ -6,6 +8,7 @@ export interface Poll {
   expiresAt: Date;
   isExpired: boolean;
   totalVotes: number;
+  pollType?: PollType;
 }
 
 export interface PollOption {

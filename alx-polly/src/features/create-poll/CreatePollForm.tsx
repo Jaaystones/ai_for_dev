@@ -6,6 +6,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Checkbox } from "@/components/ui/Checkbox";
+import { Label } from "@/components/ui/label";
 import { useAuth } from "@/contexts/AuthContext";
 import { usePollCreation } from "@/hooks/usePollCreation";
 import { usePollFormValidation } from "@/hooks/usePollFormValidation";
@@ -13,6 +15,7 @@ import { FormField, TextFormField } from "@/components/forms/FormField";
 import { OptionsList } from "@/components/forms/OptionsList";
 import { LoadingSpinner, InlineSpinner } from "@/components/loading/LoadingSpinner";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
+import { PollType, PollCategory } from "@/types/pollTypes";
 import type { CreatePollInput } from "@/lib/validations/poll";
 
 const programmingLanguages = [
@@ -37,6 +40,15 @@ function CreatePollFormContent() {
   const [question, setQuestion] = useState("");
   const [selectedLanguages, setSelectedLanguages] = useState<string[]>([]);
   const [customOption, setCustomOption] = useState("");
+  const [pollType, setPollType] = useState<PollType>(PollType.SINGLE_CHOICE);
+  const [category, setCategory] = useState<PollCategory>(PollCategory.PROGRAMMING);
+  const [allowOtherOption, setAllowOtherOption] = useState(false);
+  const [randomizeOptions, setRandomizeOptions] = useState(false);
+  const [requireReason, setRequireReason] = useState(false);
+  const [maxSelections, setMaxSelections] = useState<number | undefined>();
+  const [minSelections, setMinSelections] = useState<number | undefined>();
+  const [maxRating, setMaxRating] = useState(5);
+  const [scaleType, setScaleType] = useState<'stars' | 'numbers' | 'thumbs' | 'hearts'>('stars');
 
   const handleLanguageSelect = (language: string) => {
     if (!selectedLanguages.includes(language) && selectedLanguages.length < 10) {
@@ -80,8 +92,19 @@ function CreatePollFormContent() {
       description: "Programming language preference poll",
       options: selectedLanguages,
       expiresIn: 24 * 60, // 24 hours in minutes
-      allowMultipleVotes: false,
+      allowMultipleVotes: pollType === PollType.MULTIPLE_CHOICE,
       requireAuth: true,
+      pollType,
+      category,
+      allowOtherOption,
+      randomizeOptions,
+      requireReason,
+      showResults: 'after_voting' as const,
+      allowComments: false,
+      maxSelections: pollType === PollType.MULTIPLE_CHOICE ? maxSelections : undefined,
+      minSelections: pollType !== PollType.SINGLE_CHOICE ? minSelections : undefined,
+      maxRating: pollType === PollType.RATING ? maxRating : undefined,
+      scaleType: pollType === PollType.RATING ? scaleType : undefined,
     };
 
     const validation = validateForm(pollData);
@@ -94,6 +117,15 @@ function CreatePollFormContent() {
       // Reset form on success
       setQuestion("");
       setSelectedLanguages([]);
+      setPollType(PollType.SINGLE_CHOICE);
+      setCategory(PollCategory.PROGRAMMING);
+      setAllowOtherOption(false);
+      setRandomizeOptions(false);
+      setRequireReason(false);
+      setMaxSelections(undefined);
+      setMinSelections(undefined);
+      setMaxRating(5);
+      setScaleType('stars');
     } catch (err) {
       // Error is handled by the hook
       console.error('Failed to create poll:', err);
@@ -229,6 +261,172 @@ function CreatePollFormContent() {
                   onRemove={removeLanguage}
                   disabled={isSubmitting}
                 />
+
+                {/* Advanced Poll Settings */}
+                <div className="space-y-6 border-t pt-6">
+                  <h3 className="text-lg font-semibold flex items-center gap-2">
+                    ⚙️ Advanced Poll Settings
+                  </h3>
+
+                  {/* Poll Type */}
+                  <FormField
+                    label="Poll Type"
+                    description="Choose how users will vote on this poll"
+                  >
+                    <Select 
+                      value={pollType} 
+                      onValueChange={(value) => setPollType(value as PollType)}
+                      disabled={isSubmitting}
+                    >
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value={PollType.SINGLE_CHOICE}>Single Choice - Choose one option</SelectItem>
+                        <SelectItem value={PollType.MULTIPLE_CHOICE}>Multiple Choice - Choose multiple</SelectItem>
+                        <SelectItem value={PollType.RANKING}>Ranking - Rank options in order</SelectItem>
+                        <SelectItem value={PollType.RATING}>Rating - Rate each option</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </FormField>
+
+                  {/* Category */}
+                  <FormField
+                    label="Category"
+                    description="Help users find your poll"
+                  >
+                    <Select 
+                      value={category} 
+                      onValueChange={(value) => setCategory(value as PollCategory)}
+                      disabled={isSubmitting}
+                    >
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value={PollCategory.PROGRAMMING}>Programming</SelectItem>
+                        <SelectItem value={PollCategory.GENERAL}>General</SelectItem>
+                        <SelectItem value={PollCategory.SURVEY}>Survey</SelectItem>
+                        <SelectItem value={PollCategory.FEEDBACK}>Feedback</SelectItem>
+                        <SelectItem value={PollCategory.DECISION}>Decision</SelectItem>
+                        <SelectItem value={PollCategory.OPINION}>Opinion</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </FormField>
+
+                  {/* Multiple Choice Settings */}
+                  {pollType === PollType.MULTIPLE_CHOICE && (
+                    <div className="space-y-4 border-l-2 border-blue-500 pl-4">
+                      <h4 className="font-medium text-blue-700">Multiple Choice Settings</h4>
+                      
+                      <div className="grid grid-cols-2 gap-4">
+                        <FormField label="Minimum Selections" description="Optional">
+                          <Input
+                            type="number"
+                            min="1"
+                            placeholder="e.g., 2"
+                            value={minSelections || ''}
+                            onChange={(e) => setMinSelections(e.target.value ? parseInt(e.target.value) : undefined)}
+                            disabled={isSubmitting}
+                          />
+                        </FormField>
+                        
+                        <FormField label="Maximum Selections" description="Optional">
+                          <Input
+                            type="number"
+                            min="1"
+                            placeholder="e.g., 3"
+                            value={maxSelections || ''}
+                            onChange={(e) => setMaxSelections(e.target.value ? parseInt(e.target.value) : undefined)}
+                            disabled={isSubmitting}
+                          />
+                        </FormField>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Rating Settings */}
+                  {pollType === PollType.RATING && (
+                    <div className="space-y-4 border-l-2 border-green-500 pl-4">
+                      <h4 className="font-medium text-green-700">Rating Settings</h4>
+                      
+                      <div className="grid grid-cols-2 gap-4">
+                        <FormField label="Maximum Rating" description="Scale upper limit">
+                          <Select 
+                            value={maxRating.toString()} 
+                            onValueChange={(value) => setMaxRating(parseInt(value))}
+                            disabled={isSubmitting}
+                          >
+                            <SelectTrigger>
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="3">3 - Simple scale</SelectItem>
+                              <SelectItem value="5">5 - Standard scale</SelectItem>
+                              <SelectItem value="7">7 - Detailed scale</SelectItem>
+                              <SelectItem value="10">10 - Extended scale</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </FormField>
+                        
+                        <FormField label="Scale Type" description="Visual style">
+                          <Select 
+                            value={scaleType} 
+                            onValueChange={(value) => setScaleType(value as 'stars' | 'numbers' | 'thumbs' | 'hearts')}
+                            disabled={isSubmitting}
+                          >
+                            <SelectTrigger>
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="stars">⭐ Stars</SelectItem>
+                              <SelectItem value="numbers">🔢 Numbers</SelectItem>
+                              <SelectItem value="hearts">❤️ Hearts</SelectItem>
+                              <SelectItem value="thumbs">👍 Thumbs</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </FormField>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* General Options */}
+                  <div className="space-y-3">
+                    <h4 className="font-medium">General Options</h4>
+                    
+                    <div className="space-y-3">
+                      <div className="flex items-center space-x-2">
+                        <Checkbox 
+                          id="allowOther" 
+                          checked={allowOtherOption}
+                          onCheckedChange={(checked) => setAllowOtherOption(checked === true)}
+                          disabled={isSubmitting}
+                        />
+                        <Label htmlFor="allowOther">Allow "Other" option</Label>
+                      </div>
+                      
+                      <div className="flex items-center space-x-2">
+                        <Checkbox 
+                          id="randomize" 
+                          checked={randomizeOptions}
+                          onCheckedChange={(checked) => setRandomizeOptions(checked === true)}
+                          disabled={isSubmitting}
+                        />
+                        <Label htmlFor="randomize">Randomize option order</Label>
+                      </div>
+                      
+                      <div className="flex items-center space-x-2">
+                        <Checkbox 
+                          id="requireReason" 
+                          checked={requireReason}
+                          onCheckedChange={(checked) => setRequireReason(checked === true)}
+                          disabled={isSubmitting}
+                        />
+                        <Label htmlFor="requireReason">Require voting reason</Label>
+                      </div>
+                    </div>
+                  </div>
+                </div>
 
                 {/* Submit Button */}
                 <Button

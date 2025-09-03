@@ -1,5 +1,6 @@
 import { ApiResponse, ApiError, VoteResult, Poll } from '@/types/api';
 import { CreatePollInput } from '@/lib/validations/poll';
+import { PollType } from '@/types/pollTypes';
 import config, { buildApiUrl } from '@/lib/config';
 
 export class PollService {
@@ -73,6 +74,43 @@ export class PollService {
     } catch (error) {
       if (error instanceof ApiError) throw error;
       throw new ApiError('Failed to vote', 500);
+    }
+  }
+
+  static async submitAdvancedVote(
+    voteData: any, 
+    pollType: PollType
+  ): Promise<ApiResponse<VoteResult>> {
+    try {
+      let endpoint: string;
+      
+      switch (pollType) {
+        case PollType.SINGLE_CHOICE:
+          endpoint = `${this.baseUrl}/${voteData.pollId}/vote`;
+          break;
+        case PollType.MULTIPLE_CHOICE:
+          endpoint = `${this.baseUrl}/${voteData.pollId}/vote/multiple`;
+          break;
+        case PollType.RANKING:
+          endpoint = `${this.baseUrl}/${voteData.pollId}/vote/ranking`;
+          break;
+        case PollType.RATING:
+          endpoint = `${this.baseUrl}/${voteData.pollId}/vote/rating`;
+          break;
+        default:
+          throw new ApiError('Unsupported poll type', 400);
+      }
+
+      const response = await this.fetchWithTimeout(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(voteData),
+      });
+      
+      return this.handleResponse<VoteResult>(response);
+    } catch (error) {
+      if (error instanceof ApiError) throw error;
+      throw new ApiError('Failed to submit advanced vote', 500);
     }
   }
 
