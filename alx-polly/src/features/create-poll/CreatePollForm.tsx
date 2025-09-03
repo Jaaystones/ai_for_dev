@@ -5,9 +5,14 @@ import { useRouter } from "next/navigation";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useAuth } from "@/contexts/AuthContext";
+import { usePollCreation } from "@/hooks/usePollCreation";
+import { usePollFormValidation } from "@/hooks/usePollFormValidation";
+import { FormField, TextFormField } from "@/components/forms/FormField";
+import { OptionsList } from "@/components/forms/OptionsList";
+import { LoadingSpinner, InlineSpinner } from "@/components/loading/LoadingSpinner";
+import { ErrorBoundary } from "@/components/ErrorBoundary";
 import type { CreatePollInput } from "@/lib/validations/poll";
 
 const programmingLanguages = [
@@ -23,86 +28,75 @@ const programmingLanguages = [
   "Kotlin"
 ];
 
-export default function CreatePollForm() {
+function CreatePollFormContent() {
   const router = useRouter();
   const { user, loading: authLoading } = useAuth();
+  const { createPoll, isSubmitting, error: submitError, clearError } = usePollCreation();
+  const { errors, validateField, validateForm, clearError: clearFieldError } = usePollFormValidation();
   
   const [question, setQuestion] = useState("");
   const [selectedLanguages, setSelectedLanguages] = useState<string[]>([]);
   const [customOption, setCustomOption] = useState("");
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
 
   const handleLanguageSelect = (language: string) => {
-    if (!selectedLanguages.includes(language)) {
-      setSelectedLanguages([...selectedLanguages, language]);
+    if (!selectedLanguages.includes(language) && selectedLanguages.length < 10) {
+      const newOptions = [...selectedLanguages, language];
+      setSelectedLanguages(newOptions);
+      validateField('options', newOptions);
+      clearFieldError('options');
     }
   };
 
   const removeLanguage = (language: string) => {
-    setSelectedLanguages(selectedLanguages.filter(lang => lang !== language));
+    const newOptions = selectedLanguages.filter(lang => lang !== language);
+    setSelectedLanguages(newOptions);
+    validateField('options', newOptions);
   };
 
   const addCustomOption = () => {
-    if (customOption.trim() && !selectedLanguages.includes(customOption.trim())) {
-      setSelectedLanguages([...selectedLanguages, customOption.trim()]);
+    const trimmedOption = customOption.trim();
+    if (trimmedOption && 
+        !selectedLanguages.includes(trimmedOption) && 
+        selectedLanguages.length < 10) {
+      const newOptions = [...selectedLanguages, trimmedOption];
+      setSelectedLanguages(newOptions);
       setCustomOption("");
+      validateField('options', newOptions);
+      clearFieldError('options');
     }
+  };
+
+  const handleQuestionChange = (value: string) => {
+    setQuestion(value);
+    validateField('title', value);
+    clearError();
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    // Validation
-    if (!question.trim() || selectedLanguages.length < 2) {
-      setError("Please provide a question and at least 2 options");
+    const pollData: CreatePollInput = {
+      title: question.trim(),
+      description: "Programming language preference poll",
+      options: selectedLanguages,
+      expiresIn: 24 * 60, // 24 hours in minutes
+      allowMultipleVotes: false,
+      requireAuth: true,
+    };
+
+    const validation = validateForm(pollData);
+    if (!validation.success) {
       return;
     }
 
-    // Check authentication
-    if (!user) {
-      setError("You must be logged in to create a poll");
-      return;
-    }
-
-    setIsSubmitting(true);
-    setError(null);
-    
     try {
-      const pollData: CreatePollInput = {
-        title: question.trim(),
-        description: "Programming language preference poll", // You can make this customizable
-        options: selectedLanguages,
-        expiresIn: 24 * 60, // 24 hours in minutes
-        allowMultipleVotes: false,
-        requireAuth: true,
-      };
-
-      const response = await fetch('/api/polls', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(pollData),
-      });
-
-      const result = await response.json();
-
-      if (!response.ok) {
-        throw new Error(result.error || 'Failed to create poll');
-      }
-
-      // Reset form
+      await createPoll(pollData);
+      // Reset form on success
       setQuestion("");
       setSelectedLanguages([]);
-      
-      // Redirect to polls list to see the new poll
-      router.push('/polls');
-      
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'An unexpected error occurred');
-    } finally {
-      setIsSubmitting(false);
+      // Error is handled by the hook
+      console.error('Failed to create poll:', err);
     }
   };
 
@@ -125,8 +119,7 @@ export default function CreatePollForm() {
             {/* Loading state */}
             {authLoading && (
               <div className="text-center py-8">
-                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-purple-600 mx-auto mb-4"></div>
-                <p className="text-muted-foreground">Loading...</p>
+                <LoadingSpinner size="lg" message="Loading..." />
               </div>
             )}
 
@@ -149,138 +142,124 @@ export default function CreatePollForm() {
             {!authLoading && user && (
               <form onSubmit={handleSubmit} className="space-y-8">
                 {/* Error display */}
-                {error && (
+                {submitError && (
                   <div className="p-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
                     <p className="text-red-600 dark:text-red-400 flex items-center gap-2">
                       <span>⚠️</span>
-                      {error}
+                      {submitError}
                     </p>
                   </div>
                 )}
 
-                <div className="space-y-3">
-                  <Label htmlFor="question" className="text-base font-semibold flex items-center gap-2">
-                    <span className="text-lg">❓</span>
-                    Poll Question
-                  </Label>
+                {/* Question Field */}
+                <TextFormField
+                  label="Poll Question"
+                  icon="❓"
+                  required
+                  error={errors.title}
+                  description="Write a clear, engaging question that ends with a question mark"
+                >
                   <Input
-                    id="question"
-                    placeholder="What's your favorite programming language for web development?"
+                    placeholder="What's your favorite programming language?"
                     value={question}
-                    onChange={(e) => setQuestion(e.target.value)}
-                    required
-                    className="h-12 text-base border-2 focus:border-purple-400 transition-colors"
+                    onChange={(e) => handleQuestionChange(e.target.value)}
+                    disabled={isSubmitting}
+                    className="text-lg"
                   />
-                  <p className="text-sm text-muted-foreground">
-                    Make it engaging and specific to get the best responses!
-                  </p>
-                </div>
+                </TextFormField>
 
-                <div className="space-y-4">
-                  <Label className="text-base font-semibold flex items-center gap-2">
-                    <span className="text-lg">💻</span>
-                    Select Programming Languages
-                  </Label>
-                  <Select onValueChange={handleLanguageSelect}>
-                    <SelectTrigger className="h-12 text-base border-2">
-                      <SelectValue placeholder="Choose from popular programming languages" />
+                {/* Language Selection */}
+                <FormField
+                  label="Programming Languages"
+                  icon="💻"
+                  description="Choose from popular programming languages"
+                >
+                  <Select onValueChange={handleLanguageSelect} disabled={isSubmitting}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select a programming language" />
                     </SelectTrigger>
                     <SelectContent>
-                      {programmingLanguages.map((lang) => (
-                        <SelectItem key={lang} value={lang} className="text-base py-3">
-                          {lang}
+                      {programmingLanguages.map((language) => (
+                        <SelectItem
+                          key={language}
+                          value={language}
+                          disabled={selectedLanguages.includes(language)}
+                        >
+                          {language}
+                          {selectedLanguages.includes(language) && " ✓"}
                         </SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
-                </div>
+                </FormField>
 
-                <div className="space-y-4">
-                  <Label className="text-base font-semibold flex items-center gap-2">
-                    <span className="text-lg">➕</span>
-                    Add Custom Option
-                  </Label>
-                  <div className="flex gap-3">
+                {/* Custom Option */}
+                <FormField
+                  label="Custom Option"
+                  icon="⚡"
+                  description="Add your own programming language or framework"
+                >
+                  <div className="flex gap-2">
                     <Input
-                      placeholder="Add your own programming language"
+                      placeholder="Add your own programming language..."
                       value={customOption}
                       onChange={(e) => setCustomOption(e.target.value)}
-                      className="h-12 text-base border-2 flex-1"
+                      disabled={isSubmitting}
+                      onKeyPress={(e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
+                          addCustomOption();
+                        }
+                      }}
                     />
-                    <Button 
-                      type="button" 
-                      onClick={addCustomOption} 
+                    <Button
+                      type="button"
+                      onClick={addCustomOption}
+                      disabled={!customOption.trim() || selectedLanguages.length >= 10 || isSubmitting}
                       variant="outline"
-                      className="h-12 px-6 border-2 border-purple-200 hover:border-purple-400 hover:bg-purple-50 dark:border-purple-700 dark:hover:border-purple-500"
                     >
                       Add
                     </Button>
                   </div>
-                </div>
+                </FormField>
 
-                {selectedLanguages.length > 0 && (
-                  <div className="space-y-4 p-6 bg-gradient-to-r from-blue-50 to-purple-50 dark:from-blue-900/20 dark:to-purple-900/20 rounded-xl border border-blue-200 dark:border-blue-800">
-                    <Label className="text-base font-semibold flex items-center gap-2">
-                      <span className="text-lg">📝</span>
-                      Selected Options ({selectedLanguages.length})
-                      {selectedLanguages.length >= 2 && (
-                        <span className="text-sm text-green-600 dark:text-green-400 ml-2">✓ Ready to publish</span>
-                      )}
-                    </Label>
-                    <div className="flex flex-wrap gap-3">
-                      {selectedLanguages.map((lang, index) => (
-                        <div
-                          key={lang}
-                          className="group flex items-center gap-2 bg-white dark:bg-slate-700 px-4 py-2 rounded-full border-2 border-blue-200 dark:border-blue-700 hover:border-blue-400 dark:hover:border-blue-500 transition-colors animate-slide-up"
-                          style={{ animationDelay: `${index * 0.1}s` }}
-                        >
-                          <span className="font-medium">{lang}</span>
-                          <button
-                            type="button"
-                            onClick={() => removeLanguage(lang)}
-                            className="ml-1 text-red-500 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300 font-bold opacity-60 group-hover:opacity-100 transition-opacity"
-                          >
-                            ×
-                          </button>
-                        </div>
-                      ))}
-                    </div>
-                    {selectedLanguages.length < 2 && (
-                      <p className="text-sm text-amber-600 dark:text-amber-400 flex items-center gap-2">
-                        <span>⚠️</span>
-                        Add at least {2 - selectedLanguages.length} more option{2 - selectedLanguages.length !== 1 ? 's' : ''} to create your poll
-                      </p>
-                    )}
-                  </div>
-                )}
+                {/* Options List */}
+                <OptionsList 
+                  options={selectedLanguages}
+                  onRemove={removeLanguage}
+                  disabled={isSubmitting}
+                />
 
-                <div className="pt-4">
-                  <Button 
-                    type="submit" 
-                    className="w-full h-14 text-base font-semibold bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 shadow-lg hover:shadow-xl transition-all duration-300 disabled:opacity-50" 
-                    disabled={isSubmitting || !question.trim() || selectedLanguages.length < 2}
-                  >
-                    {isSubmitting ? (
-                      <>
-                        <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white mr-3"></div>
-                        Creating Poll...
-                      </>
-                    ) : (
-                      <>
-                        🚀 Create Poll (24h expiry)
-                      </>
-                    )}
-                  </Button>
-                  
-                  <p className="text-sm text-muted-foreground mt-3 text-center">
-                    Your poll will be live for 24 hours and then automatically close
-                  </p>
-                </div>
+                {/* Submit Button */}
+                <Button
+                  type="submit"
+                  disabled={isSubmitting || !question.trim() || selectedLanguages.length < 2}
+                  className="w-full h-12 text-lg font-semibold bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 hover:scale-[1.02] active:scale-[0.98]"
+                >
+                  {isSubmitting ? (
+                    <>
+                      <InlineSpinner className="mr-2" />
+                      Creating Poll...
+                    </>
+                  ) : (
+                    <>
+                      🚀 Create Poll (24h expiry)
+                    </>
+                  )}
+                </Button>
               </form>
             )}
           </CardContent>
         </Card>
       </div>
     </div>
+  );
+}
+
+export default function CreatePollForm() {
+  return (
+    <ErrorBoundary>
+      <CreatePollFormContent />
+    </ErrorBoundary>
   );
 }
