@@ -2,7 +2,9 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs'
 import { cookies } from 'next/headers'
 import { VoteSchema } from '@/lib/validations/poll'
-import { getUser, getClientIP } from '@/lib/utils/auth'
+import { getUser, getClientIP, isWhitelistedIP } from '@/lib/utils/auth'
+import { rateLimit, burstRateLimit } from '@/lib/rate-limit'
+import config from '@/lib/config'
 import type { Database } from '@/types/database'
 
 interface RouteParams {
@@ -12,6 +14,61 @@ interface RouteParams {
 // POST /api/polls/[id]/vote - Submit a vote
 export async function POST(request: NextRequest, { params }: RouteParams) {
   try {
+    // Check if rate limiting is enabled and IP is not whitelisted
+    if (config.rateLimiting.enabled && !isWhitelistedIP(getClientIP(request))) {
+      // Apply burst protection
+      if (config.rateLimiting.burstProtection.enabled) {
+        const burstResult = await burstRateLimit.checkBurst(
+          request,
+          config.rateLimiting.burstProtection.limit,
+          config.rateLimiting.burstProtection.window
+        )
+        
+        if (!burstResult.success) {
+          return NextResponse.json(
+            { 
+              error: burstResult.error,
+              rateLimitExceeded: true,
+              type: 'burst'
+            },
+            { 
+              status: 429,
+              headers: {
+                'X-RateLimit-Type': 'burst',
+                'X-RateLimit-Limit': burstResult.limit.toString(),
+                'X-RateLimit-Remaining': burstResult.remaining.toString(),
+                'X-RateLimit-Reset': Math.ceil(burstResult.resetTime / 1000).toString(),
+                'Retry-After': Math.ceil((burstResult.resetTime - Date.now()) / 1000).toString()
+              }
+            }
+          )
+        }
+      }
+
+      // Apply voting rate limiting (more restrictive for voting)
+      const rateLimitResult = await rateLimit(request, 'polls:vote')
+      
+      if (!rateLimitResult.success) {
+        return NextResponse.json(
+          { 
+            error: rateLimitResult.error,
+            rateLimitExceeded: true,
+            type: 'standard'
+          },
+          { 
+            status: 429,
+            headers: {
+              'X-RateLimit-Type': 'standard',
+              'X-RateLimit-Limit': rateLimitResult.limit.toString(),
+              'X-RateLimit-Remaining': rateLimitResult.remaining.toString(),
+              'X-RateLimit-Reset': Math.ceil(rateLimitResult.resetTime / 1000).toString(),
+              'Retry-After': Math.ceil((rateLimitResult.resetTime - Date.now()) / 1000).toString()
+            }
+          }
+        )
+      }
+    }
+
     const cookieStore = cookies()
     const supabase = createRouteHandlerClient<Database>({ cookies: () => cookieStore })
     

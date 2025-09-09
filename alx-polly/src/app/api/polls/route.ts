@@ -2,12 +2,69 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs'
 import { cookies } from 'next/headers'
 import { CreatePollSchema } from '@/lib/validations/poll'
-import { getUser, getClientIP } from '@/lib/utils/auth'
+import { getUser, getClientIP, isWhitelistedIP } from '@/lib/utils/auth'
+import { rateLimit, burstRateLimit, RATE_LIMIT_RULES } from '@/lib/rate-limit'
+import config from '@/lib/config'
 import type { Database } from '@/types/database'
 
 // GET /api/polls - Fetch all polls with pagination
 export async function GET(request: NextRequest) {
   try {
+    // Check if rate limiting is enabled and IP is not whitelisted
+    if (config.rateLimiting.enabled && !isWhitelistedIP(getClientIP(request))) {
+      // Apply burst protection
+      if (config.rateLimiting.burstProtection.enabled) {
+        const burstResult = await burstRateLimit.checkBurst(
+          request,
+          config.rateLimiting.burstProtection.limit,
+          config.rateLimiting.burstProtection.window
+        )
+        
+        if (!burstResult.success) {
+          return NextResponse.json(
+            { 
+              error: burstResult.error,
+              rateLimitExceeded: true,
+              type: 'burst'
+            },
+            { 
+              status: 429,
+              headers: {
+                'X-RateLimit-Type': 'burst',
+                'X-RateLimit-Limit': burstResult.limit.toString(),
+                'X-RateLimit-Remaining': burstResult.remaining.toString(),
+                'X-RateLimit-Reset': Math.ceil(burstResult.resetTime / 1000).toString(),
+                'Retry-After': Math.ceil((burstResult.resetTime - Date.now()) / 1000).toString()
+              }
+            }
+          )
+        }
+      }
+
+      // Apply regular rate limiting
+      const rateLimitResult = await rateLimit(request, 'polls:view')
+      
+      if (!rateLimitResult.success) {
+        return NextResponse.json(
+          { 
+            error: rateLimitResult.error,
+            rateLimitExceeded: true,
+            type: 'standard'
+          },
+          { 
+            status: 429,
+            headers: {
+              'X-RateLimit-Type': 'standard',
+              'X-RateLimit-Limit': rateLimitResult.limit.toString(),
+              'X-RateLimit-Remaining': rateLimitResult.remaining.toString(),
+              'X-RateLimit-Reset': Math.ceil(rateLimitResult.resetTime / 1000).toString(),
+              'Retry-After': Math.ceil((rateLimitResult.resetTime - Date.now()) / 1000).toString()
+            }
+          }
+        )
+      }
+    }
+
     const cookieStore = cookies()
     const supabase = createRouteHandlerClient<Database>({ cookies: () => cookieStore })
     
@@ -62,6 +119,61 @@ export async function GET(request: NextRequest) {
 // POST /api/polls - Create a new poll
 export async function POST(request: NextRequest) {
   try {
+    // Check if rate limiting is enabled and IP is not whitelisted
+    if (config.rateLimiting.enabled && !isWhitelistedIP(getClientIP(request))) {
+      // Apply burst protection
+      if (config.rateLimiting.burstProtection.enabled) {
+        const burstResult = await burstRateLimit.checkBurst(
+          request,
+          config.rateLimiting.burstProtection.limit,
+          config.rateLimiting.burstProtection.window
+        )
+        
+        if (!burstResult.success) {
+          return NextResponse.json(
+            { 
+              error: burstResult.error,
+              rateLimitExceeded: true,
+              type: 'burst'
+            },
+            { 
+              status: 429,
+              headers: {
+                'X-RateLimit-Type': 'burst',
+                'X-RateLimit-Limit': burstResult.limit.toString(),
+                'X-RateLimit-Remaining': burstResult.remaining.toString(),
+                'X-RateLimit-Reset': Math.ceil(burstResult.resetTime / 1000).toString(),
+                'Retry-After': Math.ceil((burstResult.resetTime - Date.now()) / 1000).toString()
+              }
+            }
+          )
+        }
+      }
+
+      // Apply poll creation rate limiting
+      const rateLimitResult = await rateLimit(request, 'polls:create')
+      
+      if (!rateLimitResult.success) {
+        return NextResponse.json(
+          { 
+            error: rateLimitResult.error,
+            rateLimitExceeded: true,
+            type: 'standard'
+          },
+          { 
+            status: 429,
+            headers: {
+              'X-RateLimit-Type': 'standard',
+              'X-RateLimit-Limit': rateLimitResult.limit.toString(),
+              'X-RateLimit-Remaining': rateLimitResult.remaining.toString(),
+              'X-RateLimit-Reset': Math.ceil(rateLimitResult.resetTime / 1000).toString(),
+              'Retry-After': Math.ceil((rateLimitResult.resetTime - Date.now()) / 1000).toString()
+            }
+          }
+        )
+      }
+    }
+
     const cookieStore = cookies()
     const supabase = createRouteHandlerClient<Database>({ cookies: () => cookieStore })
     

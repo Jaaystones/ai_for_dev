@@ -37,6 +37,19 @@ const config = {
     googleAnalyticsId: process.env.NEXT_PUBLIC_GA_ID,
     hotjarId: process.env.NEXT_PUBLIC_HOTJAR_ID,
   },
+  rateLimiting: {
+    enabled: process.env.RATE_LIMITING_ENABLED !== 'false',
+    store: process.env.RATE_LIMIT_STORE || 'memory', // 'memory' | 'redis'
+    redisUrl: process.env.REDIS_URL,
+    strictMode: process.env.RATE_LIMIT_STRICT_MODE === 'true',
+    trustedProxies: process.env.TRUSTED_PROXIES?.split(',') || [],
+    whitelistedIPs: process.env.WHITELISTED_IPS?.split(',') || [],
+    burstProtection: {
+      enabled: process.env.BURST_PROTECTION_ENABLED !== 'false',
+      limit: parseInt(process.env.BURST_LIMIT || '50'),
+      window: parseInt(process.env.BURST_WINDOW || '10'), // seconds
+    }
+  },
 } as const;
 
 // Type-safe config access
@@ -45,6 +58,7 @@ export type ApiConfig = Config['api'];
 export type PollConfig = Config['poll'];
 export type UIConfig = Config['ui'];
 export type FeatureFlags = Config['features'];
+export type RateLimitConfig = Config['rateLimiting'];
 
 // Helper functions
 export const isDevelopment = process.env.NODE_ENV === 'development';
