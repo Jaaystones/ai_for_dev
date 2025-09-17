@@ -3,14 +3,38 @@ import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs'
 import { cookies } from 'next/headers'
 import { VoteSchema } from '@/lib/validations/poll'
 import { getUser, getClientIP } from '@/lib/utils/auth'
+import { rateLimit } from '@/lib/rate-limit'
 import type { Database } from '@/types/database'
 
 interface RouteParams {
   params: Promise<{ id: string }>
 }
 
-// POST /api/polls/[id]/vote - Submit a vote
+// POST /api/polls/[id]/vote - Submit a vote (with rate limiting)
 export async function POST(request: NextRequest, { params }: RouteParams) {
+  // Apply rate limiting
+  const rateLimitResult = await rateLimit(request, 'api:polls:vote');
+  if (!rateLimitResult.success) {
+    return NextResponse.json(
+      {
+        error: rateLimitResult.error || 'Rate limit exceeded',
+        limit: rateLimitResult.limit,
+        remaining: rateLimitResult.remaining,
+        resetTime: rateLimitResult.resetTime,
+        retryAfter: rateLimitResult.retryAfter
+      },
+      {
+        status: 429,
+        headers: {
+          'X-RateLimit-Limit': rateLimitResult.limit.toString(),
+          'X-RateLimit-Remaining': rateLimitResult.remaining.toString(),
+          'X-RateLimit-Reset': rateLimitResult.resetTime.toString(),
+          'Retry-After': rateLimitResult.retryAfter?.toString() || '60'
+        }
+      }
+    );
+  }
+
   try {
     const cookieStore = cookies()
     const supabase = createRouteHandlerClient<Database>({ cookies: () => cookieStore })
@@ -126,15 +150,24 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
 
     // Add user's vote info to response
     if (user && updatedPoll) {
-      const { data: userVote } = await supabase
+      const { data: existingUserVote } = await supabase
         .from('votes')
         .select('*')
         .eq('poll_id', pollId)
         .eq('user_id', user.id)
         .single()
       
-      // Type assertion since we're adding a custom property
-      ;(updatedPoll as any).user_vote = userVote
+      // Add the user vote to the poll object
+      const pollWithUserVote = {
+        ...updatedPoll,
+        user_vote: existingUserVote
+      }
+      
+      return NextResponse.json({
+        success: true,
+        vote,
+        poll: pollWithUserVote,
+      })
     }
 
     return NextResponse.json({

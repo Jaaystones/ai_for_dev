@@ -402,7 +402,7 @@ function CreatePollFormContent() {
                           onCheckedChange={(checked) => setAllowOtherOption(checked === true)}
                           disabled={isSubmitting}
                         />
-                        <Label htmlFor="allowOther">Allow "Other" option</Label>
+                        <Label htmlFor="allowOther">Allow &quot;Other&quot; option</Label>
                       </div>
                       
                       <div className="flex items-center space-x-2">

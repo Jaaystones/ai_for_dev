@@ -1,4 +1,4 @@
-require('@testing-library/jest-dom');
+import '@testing-library/jest-dom';
 
 // Suppress React act() warnings in tests
 // These warnings occur because Radix UI components and AuthProvider have async state updates

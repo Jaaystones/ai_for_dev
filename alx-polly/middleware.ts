@@ -14,7 +14,6 @@ export async function middleware(req: NextRequest) {
 
   // Protected routes that require authentication
   const protectedRoutes = ['/create-poll', '/polls/[id]/vote', '/dashboard']
-  const publicRoutes = ['/login', '/register', '/']
   
   const { pathname } = req.nextUrl
 

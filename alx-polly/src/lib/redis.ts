@@ -29,7 +29,6 @@ class RedisClient {
         url: redisUrl,
         socket: {
           connectTimeout: 10000,
-          lazyConnect: true,
           reconnectStrategy: (retries) => {
             if (retries > 3) {
               console.error('Redis connection failed after 3 retries');
@@ -87,7 +86,16 @@ class RedisClient {
   async set(key: string, value: string, options?: { EX?: number; PX?: number }): Promise<boolean> {
     try {
       const client = await this.getClient();
-      const result = await client.set(key, value, options);
+      let result: string | null;
+      
+      if (options?.EX) {
+        result = await client.setEx(key, options.EX, value);
+      } else if (options?.PX) {
+        result = await client.pSetEx(key, options.PX, value);
+      } else {
+        result = await client.set(key, value);
+      }
+      
       return result === 'OK';
     } catch (error) {
       console.error('Redis SET error:', error);
@@ -148,7 +156,8 @@ class RedisClient {
   async hget(key: string, field: string): Promise<string | null> {
     try {
       const client = await this.getClient();
-      return await client.hGet(key, field);
+      const result = await client.hGet(key, field);
+      return result || null;
     } catch (error) {
       console.error('Redis HGET error:', error);
       return null;
@@ -204,6 +213,20 @@ class RedisClient {
       return 0;
     }
   }
+
+  async zpopmax(key: string): Promise<{ value: string; score: number } | null> {
+    try {
+      const client = await this.getClient();
+      return await client.zPopMax(key);
+    } catch (error) {
+      console.error('Redis ZPOPMAX error:', error);
+      return null;
+    }
+  }
+
+  // Removed multi() - not supported by RedisClientType
+
+  // Removed pipeline() and multi() - not supported by RedisClientType
 }
 
 // Export singleton instance

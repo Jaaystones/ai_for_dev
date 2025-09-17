@@ -2,7 +2,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs'
 import { cookies } from 'next/headers'
 import { CreatePollSchema } from '@/lib/validations/poll'
-import { getUser, getClientIP } from '@/lib/utils/auth'
+import { getUser } from '@/lib/utils/auth'
+import { rateLimit } from '@/lib/rate-limit'
 import type { Database } from '@/types/database'
 
 // GET /api/polls - Fetch all polls with pagination
@@ -59,8 +60,31 @@ export async function GET(request: NextRequest) {
   }
 }
 
-// POST /api/polls - Create a new poll
+// POST /api/polls - Create a new poll (with rate limiting)
 export async function POST(request: NextRequest) {
+  // Apply rate limiting
+  const rateLimitResult = await rateLimit(request, 'api:polls:create');
+  if (!rateLimitResult.success) {
+    return NextResponse.json(
+      {
+        error: rateLimitResult.error || 'Rate limit exceeded',
+        limit: rateLimitResult.limit,
+        remaining: rateLimitResult.remaining,
+        resetTime: rateLimitResult.resetTime,
+        retryAfter: rateLimitResult.retryAfter
+      },
+      {
+        status: 429,
+        headers: {
+          'X-RateLimit-Limit': rateLimitResult.limit.toString(),
+          'X-RateLimit-Remaining': rateLimitResult.remaining.toString(),
+          'X-RateLimit-Reset': rateLimitResult.resetTime.toString(),
+          'Retry-After': rateLimitResult.retryAfter?.toString() || '60'
+        }
+      }
+    );
+  }
+
   try {
     const cookieStore = cookies()
     const supabase = createRouteHandlerClient<Database>({ cookies: () => cookieStore })

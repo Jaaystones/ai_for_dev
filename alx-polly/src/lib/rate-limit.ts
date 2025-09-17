@@ -1,5 +1,17 @@
-import { NextRequest, NextResponse } from 'next/server';
 import { redis } from './redis';
+
+// Types for Next.js compatibility
+interface NextRequest {
+  headers: Headers;
+  url: string;
+  method: string;
+  ip?: string;
+}
+
+interface NextResponse {
+  json: (body: unknown, init?: ResponseInit) => Response;
+  headers: Headers;
+}
 
 // Rate limit configuration interface
 export interface RateLimitConfig {
@@ -108,43 +120,41 @@ export class RedisRateLimit {
     const resetTime = now + window;
 
     try {
-      // Use Redis transaction for atomic operations
-      const multi = redis.multi();
+      // Use Redis atomic operations
+      const requestId = `${now}-${Math.random()}`;
       
       // Remove expired entries
-      multi.zremrangebyscore(key, 0, now - window);
+      await redis.zremrangebyscore(key, 0, now - window);
       
       // Count current requests in window
-      multi.zcard(key);
+      const currentCount = await redis.zcard(key);
+      
+      // Check if limit would be exceeded
+      if (currentCount >= rule.requests) {
+        return {
+          success: false,
+          limit: rule.requests,
+          remaining: 0,
+          resetTime,
+          retryAfter: rule.window,
+          error: rule.message
+        };
+      }
       
       // Add current request
-      multi.zadd(key, now, `${now}-${Math.random()}`);
+      await redis.zadd(key, now, requestId);
       
       // Set expiration
-      multi.expire(key, rule.window);
+      await redis.expire(key, rule.window);
       
-      const results = await multi.exec();
-      
-      if (!results) {
-        throw new Error('Redis transaction failed');
-      }
-
-      const currentCount = results[1] as number;
       const remaining = Math.max(0, rule.requests - currentCount - 1);
-      const success = currentCount < rule.requests;
-
-      // If rate limit exceeded, remove the request we just added
-      if (!success) {
-        await redis.zpopmax(key);
-      }
 
       return {
-        success,
+        success: true,
         limit: rule.requests,
         remaining,
         resetTime,
-        retryAfter: success ? undefined : rule.window,
-        error: success ? undefined : rule.message
+        error: undefined
       };
 
     } catch (error) {
@@ -257,24 +267,25 @@ export function withRateLimit(
   ruleKey: keyof typeof RATE_LIMIT_RULES,
   customIdentifier?: (request: NextRequest) => string
 ) {
-  return function (handler: (request: NextRequest, ...args: any[]) => Promise<NextResponse>) {
-    return async function (request: NextRequest, ...args: any[]): Promise<NextResponse> {
+      return function (handler: (request: NextRequest, ...args: unknown[]) => Promise<Response>) {
+        return async function (request: NextRequest, ...args: unknown[]): Promise<Response> {
       try {
         const identifier = customIdentifier ? customIdentifier(request) : getClientIP(request);
         const result = await rateLimiter.checkLimit(identifier, ruleKey);
 
         if (!result.success) {
-          return NextResponse.json(
-            {
+              return new Response(
+            JSON.stringify({
               error: result.error || 'Rate limit exceeded',
               limit: result.limit,
               remaining: result.remaining,
               resetTime: result.resetTime,
               retryAfter: result.retryAfter
-            },
+            }),
             {
               status: 429,
               headers: {
+                'Content-Type': 'application/json',
                 'X-RateLimit-Limit': result.limit.toString(),
                 'X-RateLimit-Remaining': result.remaining.toString(),
                 'X-RateLimit-Reset': result.resetTime.toString(),
@@ -320,43 +331,41 @@ export class BurstProtection {
     const window = windowSeconds * 1000;
 
     try {
-      // Use Redis pipeline for efficiency
-      const pipeline = redis.pipeline();
+      // Use Redis operations for burst protection
+      const requestId = `${now}-${Math.random()}`;
       
       // Remove expired entries
-      pipeline.zremrangebyscore(key, 0, now - window);
+      await redis.zremrangebyscore(key, 0, now - window);
       
       // Count current requests
-      pipeline.zcard(key);
+      const currentCount = await redis.zcard(key);
+      
+      // Check if burst limit would be exceeded
+      if (currentCount >= maxRequests) {
+        return {
+          success: false,
+          limit: maxRequests,
+          remaining: 0,
+          resetTime: now + window,
+          retryAfter: windowSeconds,
+          error: 'Burst limit exceeded. Please slow down.'
+        };
+      }
       
       // Add current request
-      pipeline.zadd(key, now, `${now}-${Math.random()}`);
+      await redis.zadd(key, now, requestId);
       
       // Set expiration
-      pipeline.expire(key, windowSeconds);
+      await redis.expire(key, windowSeconds);
       
-      const results = await pipeline.exec();
-      
-      if (!results) {
-        throw new Error('Redis pipeline failed');
-      }
-
-      const currentCount = results[1][1] as number;
       const remaining = Math.max(0, maxRequests - currentCount - 1);
-      const success = currentCount < maxRequests;
-
-      // If burst limit exceeded, remove the request we just added
-      if (!success) {
-        await redis.zpopmax(key);
-      }
 
       return {
-        success,
+        success: true,
         limit: maxRequests,
         remaining,
         resetTime: now + window,
-        retryAfter: success ? undefined : windowSeconds,
-        error: success ? undefined : 'Burst limit exceeded. Please slow down.'
+        error: undefined
       };
 
     } catch (error) {

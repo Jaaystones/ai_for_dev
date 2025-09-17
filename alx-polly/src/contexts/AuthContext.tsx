@@ -27,43 +27,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true)
   const supabase = createSupabaseClient()
 
-  useEffect(() => {
-    // Get initial session
-    const getInitialSession = async () => {
-      const { data: { session }, error } = await supabase.auth.getSession()
-      if (error) {
-        console.error('Error getting session:', error)
-      } else {
-        setSession(session)
-        setUser(session?.user ?? null)
-        if (session?.user) {
-          await fetchProfile(session.user.id)
-        }
-      }
-      setLoading(false)
-    }
 
-    getInitialSession()
-
-    // Listen for auth changes
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (event, session) => {
-        console.log('Auth state changed:', event, session?.user?.email)
-        setSession(session)
-        setUser(session?.user ?? null)
-        
-        if (session?.user) {
-          await fetchProfile(session.user.id)
-        } else {
-          setProfile(null)
-        }
-        setLoading(false)
-      }
-    )
-
-    return () => subscription.unsubscribe()
-  }, [supabase.auth])
-
+  // Move fetchProfile above useEffect to avoid lint error
   const fetchProfile = async (userId: string) => {
     try {
       const { data: profile, error } = await supabase
@@ -97,6 +62,54 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       console.error('Error in fetchProfile:', error)
     }
   }
+
+  useEffect(() => {
+    // Get initial session
+    const getInitialSession = async () => {
+      try {
+        const { data: { session }, error } = await supabase.auth.getSession()
+        if (error) {
+          console.error('Error getting session:', error)
+        } else {
+          setSession(session)
+          setUser(session?.user ?? null)
+          if (session?.user) {
+            try {
+              await fetchProfile(session.user.id)
+            } catch (error) {
+              console.error('Error in fetchProfile (initial):', error)
+            }
+          }
+        }
+      } catch (error) {
+        console.error('Error in getInitialSession:', error)
+      }
+      setLoading(false)
+    }
+
+    getInitialSession()
+
+    // Listen for auth changes
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      async (event, session) => {
+        console.log('Auth state changed:', event, session?.user?.email)
+        setSession(session)
+        setUser(session?.user ?? null)
+        if (session?.user) {
+          try {
+            await fetchProfile(session.user.id)
+          } catch (error) {
+            console.error('Error in fetchProfile (auth change):', error)
+          }
+        } else {
+          setProfile(null)
+        }
+        setLoading(false)
+      }
+    )
+
+    return () => subscription.unsubscribe()
+  }, [supabase.auth, fetchProfile])
 
   const signUp = async (email: string, password: string, metadata?: { username?: string; full_name?: string }) => {
     const { data, error } = await supabase.auth.signUp({

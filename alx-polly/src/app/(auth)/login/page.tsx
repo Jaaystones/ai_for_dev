@@ -35,7 +35,7 @@ export default function LoginPage() {
         router.push('/') // Redirect to homepage after successful login
         router.refresh()
       }
-    } catch (err) {
+    } catch {
       setError('An unexpected error occurred')
     } finally {
       setLoading(false)
@@ -146,7 +146,7 @@ export default function LoginPage() {
                   </div>
                   <div className="relative flex justify-center text-sm">
                     <span className="bg-card px-4 text-muted-foreground">
-                      Don't have an account?
+                      Don&apos;t have an account?
                     </span>
                   </div>
                 </div>

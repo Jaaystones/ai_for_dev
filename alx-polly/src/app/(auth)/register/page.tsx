@@ -9,7 +9,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Alert, AlertDescription } from '@/components/ui/alert'
-import { Eye, EyeOff, Mail, Lock, User, ArrowLeft, Check } from 'lucide-react'
+import { Eye, EyeOff, Mail, Lock, ArrowLeft, Check } from 'lucide-react'
 
 export default function RegisterPage() {
   const [formData, setFormData] = useState({
@@ -74,7 +74,7 @@ export default function RegisterPage() {
           router.push('/login')
         }, 3000)
       }
-    } catch (err) {
+    } catch {
       setError('An unexpected error occurred')
     } finally {
       setLoading(false)
@@ -95,7 +95,7 @@ export default function RegisterPage() {
               </h2>
               <p className="text-muted-foreground">
                 Please check your email to verify your account. 
-                You'll be redirected to login shortly.
+                You&apos;ll be redirected to login shortly.
               </p>
             </div>
             <div className="animate-pulse text-sm text-muted-foreground">
